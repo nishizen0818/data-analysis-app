@@ -161,6 +161,3 @@ if st.button("🚀 分析実行"):
 
     except Exception as e:
         st.error(f"エラーが発生しました: {e}")
-        
-st.markdown("---")
-st.markdown("[メインメニューに戻る🏠](main.py)")
