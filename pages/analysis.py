@@ -298,5 +298,3 @@ if st.button("🚀 分析実行"):
     else:
         st.info("すべてのファイルがアップロードされていません。ファイル状況をご確認ください。")
 
-st.markdown("---")
-st.markdown("[メインメニューに戻る🏠](main.py)")
