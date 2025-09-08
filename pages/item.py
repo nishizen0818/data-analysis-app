@@ -206,6 +206,3 @@ if st.button("🚀 集計実行"):
             st.error(f"⚠️ エラーが発生しました：\n\n{e}")
     else:
         st.info("📂 分類ファイルとデータファイルの両方をアップロードしてください。")
-
-st.markdown("---")
-st.markdown("[メインメニューに戻る🏠](main.py)")
