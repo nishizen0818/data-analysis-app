@@ -225,6 +225,3 @@ if st.session_state.df_filtered_display is not None:
         if st.checkbox("📂 訪問データのフィルター後データを見る", key="view_filtered_visit_data"):
             st.dataframe(df_filtered_to_display, use_container_width=True)
 
-# ホーム画面に戻るリンクを一番下に追加
-st.markdown("---")
-st.markdown("[メインメニューに戻る🏠](main.py)")
