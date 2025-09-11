@@ -112,9 +112,9 @@ with left:
 # 右側：ファイルアップロード
 with right:
     st.header("📁 ファイルアップロード")
-    week1_file = st.file_uploader("1週目の取引先リスト", type=["xlsx"], key="week1")
-    week2_file = st.file_uploader("2週目の取引先リスト", type=["xlsx"], key="week2")
-    week3_file = st.file_uploader("3週目の取引先リスト", type=["xlsx"], key="week3")
+    week1_file = st.file_uploader("先々週の取引先リスト", type=["xlsx"], key="week1")
+    week2_file = st.file_uploader("先週の取引先リスト", type=["xlsx"], key="week2")
+    week3_file = st.file_uploader("今週の取引先リスト", type=["xlsx"], key="week3")
     helper_file = st.file_uploader("補助データファイル", type=["xlsx"], key="helper")
 
 # ファイル保存関数
@@ -161,3 +161,4 @@ if st.button("🚀 分析実行"):
 
     except Exception as e:
         st.error(f"エラーが発生しました: {e}")
+
