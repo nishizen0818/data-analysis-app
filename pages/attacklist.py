@@ -25,14 +25,6 @@ def save_state(state):
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
-def clear_state():
-    """状態をクリアします。"""
-    if "state" in st.session_state:
-        st.session_state.state["uploaded_file"] = None
-        save_state(st.session_state.state)
-    st.session_state.df_filtered_display = None
-    st.session_state.show_analysis = False
-    
 # ---------------------------- ヘルパー関数 ----------------------------
 def save_file_and_update_state(uploaded_file, file_key):
     """
@@ -77,15 +69,13 @@ with left_col:
         file_status_html += f"<p><strong>アタックリストファイル</strong>: ❌ 未設定</p>"
     file_status_html += "</div>"
     st.markdown(file_status_html, unsafe_allow_html=True)
-    if st.button("状態をクリアしてやり直す"):
-        clear_state()
-        st.rerun()
 
 with right_col:
     # 段階的なUIの導入
     st.subheader("1️⃣ ファイルアップロード")
     uploaded_file = st.file_uploader("Excelファイル（.xlsx）をアップロード", type="xlsx", key="main_file_uploader")
     
+    # アップロード完了ボタン
     if uploaded_file:
         if st.button("📤 アップロード完了"):
             if save_file_and_update_state(uploaded_file, "uploaded_file"):
