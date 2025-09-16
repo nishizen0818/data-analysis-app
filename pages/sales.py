@@ -252,44 +252,55 @@ if st.button("🚀 分析実行"):
             st.dataframe(comp_df, use_container_width=True)
 
             st.markdown("### Step 3: 並び替えと集計")
+            
+            # --- ここから修正 ---
+            
+            # オプション名を全角アンダースコアから半角アンダースコアに修正
+            sort_options = (
+                "大分類別_純売上額_今年順",
+                "大分類別_差額ベスト順",
+                "大分類別_差額ワースト順",
+                "得意先別_純売上額_今年順",
+                "得意先別_差額ベスト順",
+                "得意先別_差額ワースト順",
+            )
             option = st.selectbox(
                 "並び替え基準を選んでください",
-                (
-                    "大分類別（純売上額＿今年順）",
-                    "大分類別（差額ベスト順）",
-                    "大分類別（差額ワースト順）",
-                    "得意先別（純売上額＿今年順）",
-                    "得意先別（差額ベスト順）",
-                    "得意先別（差額ワースト順）",
-                ),
+                sort_options,
                 key="sort_option_select"
             )
 
+            # 選択されたオプションに基づいて処理を分岐
             if option.startswith("大分類別"):
                 summary_df = summarize_by_category(comp_df)
-                if "純売上額順" in option:
+                if "_純売上額_" in option: # 修正: "純売上額順" -> "_純売上額_"
                     summary_sorted = summary_df.sort_values("純売上額_今年", ascending=False)
                 elif "ベスト" in option:
                     summary_sorted = summary_df.sort_values("差額", ascending=False)
-                else:
-                    summary_sorted = summary_df.sort_values("差額")
-                st.dataframe(summary_sorted, use_container_width=True)
+                else: # ワースト
+                    summary_sorted = summary_df.sort_values("差額", ascending=True) # 修正: ascending=True
+                
+                st.subheader("大分類別：集計結果")
                 if not summary_sorted.empty:
+                    st.dataframe(summary_sorted, use_container_width=True)
                     st.bar_chart(summary_sorted.set_index("大分類")["純売上額_今年"])
                 else:
                     st.info("集計するデータがありません。")
-            else:
-                if "純売上額順" in option:
+            else: # 得意先別
+                if "_純売上額_" in option: # 修正: "純売上額順" -> "_純売上額_"
                     df_sorted = comp_df.sort_values("純売上額_今年", ascending=False)
                 elif "ベスト" in option:
                     df_sorted = comp_df.sort_values("差額", ascending=False)
-                else:
-                    df_sorted = comp_df.sort_values("差額")
-                st.markdown("### 得意先別：比較結果")
+                else: # ワースト
+                    df_sorted = comp_df.sort_values("差額", ascending=True) # 修正: ascending=True
+                
+                st.subheader("得意先別：比較結果")
                 if not df_sorted.empty:
                     st.dataframe(df_sorted, use_container_width=True)
                 else:
                     st.info("集計するデータがありません。")
+            
+            # --- 修正ここまで ---
 
             st.success("分析完了！")
         
@@ -297,5 +308,3 @@ if st.button("🚀 分析実行"):
             st.error(f"分析中にエラーが発生しました。ファイルの内容を確認してください。エラー詳細: {e}")
     else:
         st.info("すべてのファイルがアップロードされていません。ファイル状況をご確認ください。")
-
-
