@@ -3,7 +3,7 @@ import pandas as pd
 import re
 from collections import Counter
 from datetime import datetime
-import openpyxl # openpyxlをインポート
+import openpyxl
 import os
 import json
 
@@ -25,6 +25,14 @@ def save_state(state):
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
+def clear_state():
+    """状態をクリアします。"""
+    if "state" in st.session_state:
+        st.session_state.state["uploaded_file"] = None
+        save_state(st.session_state.state)
+    st.session_state.df_filtered_display = None
+    st.session_state.show_analysis = False
+    
 # ---------------------------- ヘルパー関数 ----------------------------
 def save_file_and_update_state(uploaded_file, file_key):
     """
@@ -36,6 +44,8 @@ def save_file_and_update_state(uploaded_file, file_key):
             f.write(uploaded_file.getbuffer())
         st.session_state.state[file_key] = {"path": filepath, "name": uploaded_file.name}
         save_state(st.session_state.state)
+        return True
+    return False
 
 # 定数
 KINIKI_AREAS = ["大阪", "奈良", "京都", "滋賀", "兵庫", "三重", "和歌山"]
@@ -48,6 +58,10 @@ st.title("📊 アタックリスト分析")
 # 状態のロード
 if "state" not in st.session_state:
     st.session_state.state = load_state()
+if 'df_filtered_display' not in st.session_state:
+    st.session_state.df_filtered_display = None
+if 'show_analysis' not in st.session_state:
+    st.session_state.show_analysis = False
 
 # 左側にファイル状況、右側にアップロードUIを配置
 left_col, right_col = st.columns([1, 2])
@@ -63,116 +77,119 @@ with left_col:
         file_status_html += f"<p><strong>アタックリストファイル</strong>: ❌ 未設定</p>"
     file_status_html += "</div>"
     st.markdown(file_status_html, unsafe_allow_html=True)
+    if st.button("状態をクリアしてやり直す"):
+        clear_state()
+        st.rerun()
 
 with right_col:
-    # ファイルアップローダー
+    # 段階的なUIの導入
+    st.subheader("1️⃣ ファイルアップロード")
     uploaded_file = st.file_uploader("Excelファイル（.xlsx）をアップロード", type="xlsx", key="main_file_uploader")
-    save_file_and_update_state(uploaded_file, "uploaded_file")
-
-    # セッションステートに変数を初期化
-    if 'df_filtered_display' not in st.session_state:
-        st.session_state.df_filtered_display = None
-        
-    file_path = st.session_state.state.get("uploaded_file", {}).get("path")
     
-    if file_path and os.path.exists(file_path):
-        try:
-            # ファイルがアップロードされたら、フィルター画面を表示
-            st.markdown("---")
-            st.markdown("### 🎛 訪問データの絞り込み")
-
-            # openpyxlでワークブックを読み込み、非表示シートを特定
-            workbook = openpyxl.load_workbook(file_path, read_only=True)
-            visible_sheet_names = []
-            for sheet_name in workbook.sheetnames:
-                ws = workbook[sheet_name]
-                if ws.sheet_state == 'visible':
-                    visible_sheet_names.append(sheet_name)
-
-            # pandas.ExcelFileオブジェクトを作成
-            xls = pd.ExcelFile(file_path)
-
-            # 表示されているシート名のみを対象とする
-            sheet_names = [s for s in xls.sheet_names if s in visible_sheet_names]
-
-            # シートの分離
-            log_sheet = "操作履歴"
-            main_sheets = [s for s in sheet_names if s != log_sheet]
-
-            # 主要データの読み込みと結合
-            df_list = []
-            for sheet in main_sheets:
-                df_tmp = pd.read_excel(xls, sheet_name=sheet)
-                df_tmp["シート名"] = sheet
-                if "_" in sheet:
-                    df_tmp["担当者"], df_tmp["種別"] = sheet.split("_")
-                else:
-                    df_tmp["担当者"] = "不明"
-                    df_tmp["種別"] = "不明"
-                df_list.append(df_tmp)
-
-            df = pd.concat(df_list, ignore_index=True)
-            df["記入日"] = pd.to_datetime(df["記入日"], errors="coerce")
-
-            # 地域データの正規化
-            df["地域"] = df["地域"].apply(lambda x: "未分類" if pd.isna(x) or str(x).strip() == "" or str(x).startswith("その他：") else x)
-            df["地域"] = df["地域"].apply(lambda x: "その他" if x not in KINIKI_AREAS and x != "未分類" else x)
-
-            # カテゴリの抽出 (採用・不採用理由から)
-            df["カテゴリ"] = df["採用・不採用理由"].apply(
-                lambda x: re.findall(r"【(.*?)】", str(x))[0].split("・") if re.findall(r"【(.*?)】", str(x)) else [])
-
-            # 訪問データフィルターフォーム
-            with st.form("main_filter_form"):
-                persons_all = sorted(df["担当者"].dropna().unique())
-                persons = [p for p in persons_all if p != "不明"]
-                types_all = sorted(df["種別"].dropna().unique())
-                types = [t for t in types_all if t != "不明"]
-                areas_raw = df["地域"].dropna().unique().tolist()
-                areas = sorted(list(set(areas_raw + ["未分類"])))
-                cats = sorted([c for c in df["大分類"].dropna().unique() if c in VALID_CATEGORIES])
-
-                selected_persons = st.multiselect("担当者", persons, default=persons)
-                selected_types = st.multiselect("種別", types, default=types)
-                selected_areas = st.multiselect("地域", areas, default=areas)
-                selected_categories = st.multiselect("大分類", cats, default=cats)
-
-                min_date = df["記入日"].min()
-                max_date = df["記入日"].max()
-
-                if pd.isna(min_date) or pd.isna(max_date):
-                    st.warning("「記入日」データに有効な日付が見つかりませんでした。日付フィルターは利用できません。")
-                    start_date = None
-                    end_date = None
-                else:
-                    start_date, end_date = st.date_input("記入日", [min_date, max_date])
-
-                submitted = st.form_submit_button("🚀 分析実行")
-
-            if submitted:
-                if start_date and end_date:
-                    df_filtered_calc = df[
-                        df["担当者"].isin(selected_persons) &
-                        df["種別"].isin(selected_types) &
-                        df["地域"].isin(selected_areas) &
-                        df["大分類"].isin(selected_categories) &
-                        df["記入日"].between(pd.to_datetime(start_date), pd.to_datetime(end_date), inclusive="both")
-                    ]
-                else:
-                    df_filtered_calc = df[
-                        df["担当者"].isin(selected_persons) &
-                        df["種別"].isin(selected_types) &
-                        df["地域"].isin(selected_areas) &
-                        df["大分類"].isin(selected_categories)
-                    ]
-                st.session_state.df_filtered_display = df_filtered_calc
-
-        except Exception as e:
-            st.error(f"エラーが発生しました：{e}")
+    if uploaded_file:
+        if st.button("📤 アップロード完了"):
+            if save_file_and_update_state(uploaded_file, "uploaded_file"):
+                st.success("ファイルが正常にアップロードされました！")
+                st.session_state.show_analysis = True
+                st.rerun()
     else:
-        st.info("Excelファイルがアップロードされていません。ファイル状況をご確認ください。")
+        st.session_state.show_analysis = False
+        st.session_state.df_filtered_display = None
+    
+    # ファイルがアップロードされたら、フィルターと分析実行ボタンを表示
+    if st.session_state.show_analysis:
+        file_path = st.session_state.state.get("uploaded_file", {}).get("path")
+        
+        if file_path and os.path.exists(file_path):
+            try:
+                st.markdown("---")
+                st.subheader("2️⃣ 訪問データの絞り込みと分析実行")
 
-
+                # openpyxlでワークブックを読み込み、非表示シートを特定
+                workbook = openpyxl.load_workbook(file_path, read_only=True)
+                visible_sheet_names = [sheet_name for sheet_name in workbook.sheetnames if workbook[sheet_name].sheet_state == 'visible']
+                
+                # pandas.ExcelFileオブジェクトを作成
+                xls = pd.ExcelFile(file_path)
+                
+                # 表示されているシート名のみを対象とする
+                sheet_names = [s for s in xls.sheet_names if s in visible_sheet_names]
+                
+                # シートの分離
+                log_sheet = "操作履歴"
+                main_sheets = [s for s in sheet_names if s != log_sheet]
+                
+                # 主要データの読み込みと結合
+                df_list = []
+                for sheet in main_sheets:
+                    df_tmp = pd.read_excel(xls, sheet_name=sheet)
+                    df_tmp["シート名"] = sheet
+                    if "_" in sheet:
+                        df_tmp["担当者"], df_tmp["種別"] = sheet.split("_")
+                    else:
+                        df_tmp["担当者"] = "不明"
+                        df_tmp["種別"] = "不明"
+                    df_list.append(df_tmp)
+                
+                df = pd.concat(df_list, ignore_index=True)
+                df["記入日"] = pd.to_datetime(df["記入日"], errors="coerce")
+                
+                # 地域データの正規化
+                df["地域"] = df["地域"].apply(lambda x: "未分類" if pd.isna(x) or str(x).strip() == "" or str(x).startswith("その他：") else x)
+                df["地域"] = df["地域"].apply(lambda x: "その他" if x not in KINIKI_AREAS and x != "未分類" else x)
+                
+                # カテゴリの抽出 (採用・不採用理由から)
+                df["カテゴリ"] = df["採用・不採用理由"].apply(
+                    lambda x: re.findall(r"【(.*?)】", str(x))[0].split("・") if re.findall(r"【(.*?)】", str(x)) else [])
+                
+                # 訪問データフィルターフォーム
+                with st.form("main_filter_form"):
+                    persons_all = sorted(df["担当者"].dropna().unique())
+                    persons = [p for p in persons_all if p != "不明"]
+                    types_all = sorted(df["種別"].dropna().unique())
+                    types = [t for t in types_all if t != "不明"]
+                    areas_raw = df["地域"].dropna().unique().tolist()
+                    areas = sorted(list(set(areas_raw + ["未分類"])))
+                    cats = sorted([c for c in df["大分類"].dropna().unique() if c in VALID_CATEGORIES])
+                    
+                    selected_persons = st.multiselect("担当者", persons, default=persons)
+                    selected_types = st.multiselect("種別", types, default=types)
+                    selected_areas = st.multiselect("地域", areas, default=areas)
+                    selected_categories = st.multiselect("大分類", cats, default=cats)
+                    
+                    min_date = df["記入日"].min()
+                    max_date = df["記入日"].max()
+                    
+                    if pd.isna(min_date) or pd.isna(max_date):
+                        st.warning("「記入日」データに有効な日付が見つかりませんでした。日付フィルターは利用できません。")
+                        start_date = None
+                        end_date = None
+                    else:
+                        start_date, end_date = st.date_input("記入日", [min_date, max_date])
+                    
+                    submitted = st.form_submit_button("🚀 分析実行")
+                
+                if submitted:
+                    if start_date and end_date:
+                        df_filtered_calc = df[
+                            df["担当者"].isin(selected_persons) &
+                            df["種別"].isin(selected_types) &
+                            df["地域"].isin(selected_areas) &
+                            df["大分類"].isin(selected_categories) &
+                            df["記入日"].between(pd.to_datetime(start_date), pd.to_datetime(end_date), inclusive="both")
+                        ]
+                    else:
+                        df_filtered_calc = df[
+                            df["担当者"].isin(selected_persons) &
+                            df["種別"].isin(selected_types) &
+                            df["地域"].isin(selected_areas) &
+                            df["大分類"].isin(selected_categories)
+                        ]
+                    st.session_state.df_filtered_display = df_filtered_calc
+                    st.success("分析が完了しました。")
+            except Exception as e:
+                st.error(f"エラーが発生しました：{e}")
+                
 # 訪問データ分析結果の表示 (セッションステートにデータがあれば表示)
 if st.session_state.df_filtered_display is not None:
     st.markdown("---")
@@ -224,4 +241,3 @@ if st.session_state.df_filtered_display is not None:
 
         if st.checkbox("📂 訪問データのフィルター後データを見る", key="view_filtered_visit_data"):
             st.dataframe(df_filtered_to_display, use_container_width=True)
-
